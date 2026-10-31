@@ -149,5 +149,7 @@ Packages/packages-lock.json linguist-generated
 *.skel.bytes            lfs
 # Exceptions for .asset files such as lightning pre-baking
 LightingData.asset     binary
+Assets/Resources/Animations/** !text !filter !merge !diff
+Assets/Resources/Models/** !text !filter !merge !diff
 Assets/SimplePoly[[:space:]]City[[:space:]]-[[:space:]]Low[[:space:]]Poly[[:space:]]Assets/Textures/** !text !filter !merge !diff
 Assets/SimplePoly[[:space:]]City[[:space:]]-[[:space:]]Low[[:space:]]Poly[[:space:]]Assets/Models/** !text !filter !merge !diff
