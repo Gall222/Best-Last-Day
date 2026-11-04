@@ -6,11 +6,16 @@ namespace Components
     {
         public int Count;
         public bool HasSpawned;
+
+        public float Speed;
+        public float RunSpeed;
+        public float RotationSpeed;
+        public float MaxHealth;
     }
 
-    public struct CitizenPrefabElement : IBufferElementData
+    public struct CitizenVisualVariantElement : IBufferElementData
     {
-        public Entity Prefab;
+        public int VariantId;
         public int Weight;
     }
 

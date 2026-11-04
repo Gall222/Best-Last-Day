@@ -706,14 +706,14 @@ PrefabInstance:
     m_AddedComponents:
     - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 5e6537f7dc2ba3141b5b5850dcc20b58, type: 3}
       insertIndex: -1
-      addedObject: {fileID: -5869636268820388514}
+      addedObject: {fileID: -8442793383392653273}
   m_SourcePrefab: {fileID: 100100000, guid: 5e6537f7dc2ba3141b5b5850dcc20b58, type: 3}
 --- !u!1 &9166897067320635623 stripped
 GameObject:
   m_CorrespondingSourceObject: {fileID: 919132149155446097, guid: 5e6537f7dc2ba3141b5b5850dcc20b58, type: 3}
   m_PrefabInstance: {fileID: 8355924989387099574}
   m_PrefabAsset: {fileID: 0}
---- !u!114 &-5869636268820388514
+--- !u!114 &-8442793383392653273
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -722,9 +722,8 @@ MonoBehaviour:
   m_GameObject: {fileID: 9166897067320635623}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 03e04c2adb8e4dcfbc36eadfdcbb51c3, type: 3}
+  m_Script: {fileID: 11500000, guid: e4f3709d307c46fa87675511a32efa4f, type: 3}
   m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::CitizenAuthoring
-  speed: 1.5
-  rotationSpeed: 5
-  maxHealth: 100
+  m_EditorClassIdentifier: Assembly-CSharp::Visuals.CitizenMaterialRandomizer
+  tshirtFolder: Materials/Tshirt
+  pantsFolder: Materials/Pants

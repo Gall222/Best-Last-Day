@@ -15,13 +15,19 @@ namespace Authoring
             {
                 if (authoring.settings == null)
                 {
-                    Debug.LogError("CitizenSpawnSettings not assigned!");
+                    Debug.LogError(
+                        "CitizenSpawnSettings not assigned!",
+                        authoring
+                    );
                     return;
                 }
 
                 if (authoring.settings.prefabs.Count == 0)
                 {
-                    Debug.LogError("No citizen prefabs assigned!");
+                    Debug.LogError(
+                        "No citizen visual variants assigned!",
+                        authoring
+                    );
                     return;
                 }
 
@@ -32,27 +38,35 @@ namespace Authoring
                 AddComponent(entity, new CitizenSpawnConfig
                 {
                     Count = Mathf.Max(0, authoring.settings.count),
-                    HasSpawned = false
+                    HasSpawned = false,
+
+                    Speed = authoring.settings.speed,
+                    RunSpeed = authoring.settings.runSpeed,
+                    RotationSpeed = authoring.settings.rotationSpeed,
+                    MaxHealth = authoring.settings.maxHealth
                 });
 
-                var buffer = AddBuffer<CitizenPrefabElement>(entity);
+                var buffer =
+                    AddBuffer<CitizenVisualVariantElement>(entity);
 
-                foreach (var entry in authoring.settings.prefabs)
+                for (int i = 0; i < authoring.settings.prefabs.Count; i++)
                 {
-                    if (entry.prefab == null)
-                        continue;
+                    CitizenVisualVariant variant =
+                        authoring.settings.prefabs[i];
 
-                    DependsOn(entry.prefab);
-
-                    Entity prefab = GetEntity(
-                        entry.prefab,
-                        TransformUsageFlags.Dynamic
-                    );
-
-                    buffer.Add(new CitizenPrefabElement
+                    if (variant == null || variant.prefab == null)
                     {
-                        Prefab = prefab,
-                        Weight = Mathf.Max(1, entry.weight)
+                        Debug.LogWarning(
+                            $"CitizenSpawnAuthoring: visual variant {i} is missing!",
+                            authoring
+                        );
+                        continue;
+                    }
+
+                    buffer.Add(new CitizenVisualVariantElement
+                    {
+                        VariantId = i,
+                        Weight = Mathf.Max(1, variant.weight)
                     });
                 }
             }

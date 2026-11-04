@@ -1,4 +1,3 @@
-
 using Components;
 using Unity.Collections;
 using Unity.Entities;
@@ -12,38 +11,64 @@ namespace Systems
     {
         private EntityQuery _configQuery;
         private EntityQuery _walkPointsQuery;
+        private EntityQuery _citizensQuery;
+
+        private EntityArchetype _citizenArchetype;
 
         private Random _random;
+
+        // Минимальное расстояние между жителями.
+        private const float MinSpawnDistance = 1.8f;
+
+        // Максимальное смещение от WalkPoint.
+        private const float SpawnRadius = 1.5f;
+
+        // Сколько раз пробуем найти свободное место.
+        private const int MaxPlacementAttempts = 50;
 
         public void OnCreate(ref SystemState state)
         {
             _configQuery = state.GetEntityQuery(
                 ComponentType.ReadOnly<CitizenSpawnConfig>(),
-                ComponentType.ReadOnly<CitizenPrefabElement>()
+                ComponentType.ReadOnly<CitizenVisualVariantElement>()
             );
 
             _walkPointsQuery = state.GetEntityQuery(
                 ComponentType.ReadOnly<WalkPoint>()
             );
 
-            // Начальное значение генератора случайных чисел.
+            // Все существующие жители, в том числе ручные.
+            _citizensQuery = state.GetEntityQuery(
+                ComponentType.ReadOnly<Citizen>(),
+                ComponentType.ReadOnly<LocalTransform>()
+            );
+
+            // Описание структуры новой ECS-сущности.
+            _citizenArchetype = state.EntityManager.CreateArchetype(
+                ComponentType.ReadWrite<Citizen>(),
+                ComponentType.ReadWrite<CitizenStateComponent>(),
+                ComponentType.ReadWrite<CitizenMovement>(),
+                ComponentType.ReadWrite<CitizenHealth>(),
+                ComponentType.ReadWrite<CitizenNavigation>(),
+                ComponentType.ReadWrite<CitizenAppearance>(),
+                ComponentType.ReadWrite<LocalTransform>()
+            );
+
             _random = Random.CreateFromIndex(12345);
         }
 
         public void OnUpdate(ref SystemState state)
         {
-            // Нужен ровно один объект с настройками спавна.
             if (_configQuery.CalculateEntityCount() != 1)
                 return;
 
-            Entity configEntity = _configQuery.GetSingletonEntity();
+            EntityManager entityManager = state.EntityManager;
 
-            var entityManager = state.EntityManager;
+            Entity configEntity = _configQuery.GetSingletonEntity();
 
             var config = entityManager
                 .GetComponentData<CitizenSpawnConfig>(configEntity);
 
-            // Спавн выполняется только один раз.
             if (config.HasSpawned)
                 return;
 
@@ -68,106 +93,177 @@ namespace Systems
                 UnityEngine.Debug.LogError(
                     "CitizenSpawnSystem: WalkPoint не найдены!"
                 );
-
                 return;
             }
 
-            // Копируем каталог префабов.
-            // Это важно: ниже будут структурные изменения ECS,
-            // поэтому не держим DynamicBuffer во время Instantiate.
-            var prefabBuffer = entityManager
-                .GetBuffer<CitizenPrefabElement>(configEntity, true);
-
-            using var prefabs =
-                prefabBuffer.ToNativeArray(Allocator.Temp);
-
-            if (prefabs.Length == 0)
-            {
-                UnityEngine.Debug.LogError(
-                    "CitizenSpawnSystem: список префабов пуст!"
+            // Получаем визуальные варианты.
+            var variantBuffer = entityManager
+                .GetBuffer<CitizenVisualVariantElement>(
+                    configEntity,
+                    true
                 );
 
+            using var variants =
+                variantBuffer.ToNativeArray(Allocator.Temp);
+
+            if (variants.Length == 0)
+            {
+                UnityEngine.Debug.LogError(
+                    "CitizenSpawnSystem: список визуальных вариантов пуст!"
+                );
                 return;
             }
 
-            // Считаем общий вес всех вариантов.
+            // Считаем общий вес вариантов.
             int totalWeight = 0;
 
-            for (int i = 0; i < prefabs.Length; i++)
+            for (int i = 0; i < variants.Length; i++)
             {
-                if (prefabs[i].Prefab == Entity.Null)
-                    continue;
-
-                totalWeight += math.max(1, prefabs[i].Weight);
+                totalWeight += math.max(1, variants[i].Weight);
             }
 
             if (totalWeight <= 0)
             {
                 UnityEngine.Debug.LogError(
-                    "CitizenSpawnSystem: нет корректных префабов!"
+                    "CitizenSpawnSystem: нет корректных визуальных вариантов!"
                 );
-
                 return;
             }
 
-            // Создаём жителей.
+            // Запоминаем позиции уже существующих жителей.
+            using var existingTransforms =
+                _citizensQuery.ToComponentDataArray<LocalTransform>(
+                    Allocator.Temp
+                );
+
+            using var occupiedPositions =
+                new NativeList<float3>(Allocator.Temp);
+
+            foreach (var transform in existingTransforms)
+            {
+                occupiedPositions.Add(transform.Position);
+            }
+
+            float minDistanceSq =
+                MinSpawnDistance * MinSpawnDistance;
+
+            int createdCount = 0;
+
             for (int i = 0; i < config.Count; i++)
             {
-                // Выбираем префаб с учётом веса.
-                int value = _random.NextInt(0, totalWeight);
+                // Ищем свободное место.
+                bool positionFound = false;
 
-                Entity selectedPrefab = Entity.Null;
-                int selectedIndex = -1;
+                float3 spawnPosition = float3.zero;
+                Entity startPoint = Entity.Null;
 
-                for (int j = 0; j < prefabs.Length; j++)
+                for (int attempt = 0;
+                     attempt < MaxPlacementAttempts;
+                     attempt++)
                 {
-                    if (prefabs[j].Prefab == Entity.Null)
+                    // Случайная точка маршрута.
+                    int pointIndex = _random.NextInt(
+                        0,
+                        walkPointEntities.Length
+                    );
+
+                    float3 pointPosition =
+                        walkPoints[pointIndex].Position;
+
+                    // Случайное смещение в пределах круга.
+                    float angle = _random.NextFloat(
+                        0f,
+                        math.PI * 2f
+                    );
+
+                    float radius = math.sqrt(
+                        _random.NextFloat()
+                    ) * SpawnRadius;
+
+                    float3 offset = new float3(
+                        math.cos(angle) * radius,
+                        0f,
+                        math.sin(angle) * radius
+                    );
+
+                    float3 candidatePosition =
+                        pointPosition + offset;
+
+                    // Проверяем расстояние до занятых мест.
+                    bool isOccupied = false;
+
+                    for (int j = 0;
+                         j < occupiedPositions.Length;
+                         j++)
+                    {
+                        float3 difference =
+                            candidatePosition - occupiedPositions[j];
+
+                        // Только горизонтальное расстояние.
+                        difference.y = 0f;
+
+                        if (math.lengthsq(difference) < minDistanceSq)
+                        {
+                            isOccupied = true;
+                            break;
+                        }
+                    }
+
+                    if (isOccupied)
                         continue;
 
-                    value -= math.max(1, prefabs[j].Weight);
+                    spawnPosition = candidatePosition;
+                    startPoint = walkPointEntities[pointIndex];
+
+                    positionFound = true;
+                    break;
+                }
+
+                if (!positionFound)
+                {
+                    UnityEngine.Debug.LogWarning(
+                        "CitizenSpawnSystem: не удалось найти " +
+                        $"свободное место для жителя {i + 1}."
+                    );
+
+                    continue;
+                }
+
+                // Выбираем визуальный вариант с учётом веса.
+                int value = _random.NextInt(0, totalWeight);
+
+                int selectedVariantId = -1;
+
+                for (int j = 0; j < variants.Length; j++)
+                {
+                    value -= math.max(1, variants[j].Weight);
 
                     if (value < 0)
                     {
-                        selectedPrefab = prefabs[j].Prefab;
-                        selectedIndex = j;
+                        selectedVariantId = variants[j].VariantId;
                         break;
                     }
                 }
 
-                if (selectedPrefab == Entity.Null)
+                if (selectedVariantId < 0)
                     continue;
 
-                // Выбираем случайную точку маршрута.
-                int pointIndex = _random.NextInt(
-                    0,
-                    walkPointEntities.Length
+                // Создаём пустую Entity с нужным набором компонентов.
+                Entity citizen = entityManager.CreateEntity(
+                    _citizenArchetype
                 );
 
-                Entity startPoint = walkPointEntities[pointIndex];
-                float3 position = walkPoints[pointIndex].Position;
-
-                // Создаём ECS-сущность из выбранного префаба.
-                Entity citizen = entityManager.Instantiate(
-                    selectedPrefab
+                // Позиция и поворот.
+                entityManager.SetComponentData(
+                    citizen,
+                    LocalTransform.FromPositionRotationScale(
+                        spawnPosition,
+                        quaternion.identity,
+                        1f
+                    )
                 );
 
-                // Устанавливаем позицию.
-                if (entityManager.HasComponent<LocalTransform>(citizen))
-                {
-                    var transform =
-                        entityManager.GetComponentData<LocalTransform>(
-                            citizen
-                        );
-
-                    transform.Position = position;
-
-                    entityManager.SetComponentData(
-                        citizen,
-                        transform
-                    );
-                }
-
-                // Назначаем состояние.
+                // Начальное состояние.
                 entityManager.SetComponentData(
                     citizen,
                     new CitizenStateComponent
@@ -176,42 +272,55 @@ namespace Systems
                     }
                 );
 
-                // Сохраняем выбранный вариант внешности.
-                entityManager.AddComponentData(
+                // Параметры движения.
+                entityManager.SetComponentData(
                     citizen,
-                    new CitizenAppearance
+                    new CitizenMovement
                     {
-                        VariantId = selectedIndex
+                        Speed = config.Speed,
+                        RunSpeed = config.RunSpeed,
+                        RotationSpeed = config.RotationSpeed
                     }
                 );
 
-                // Добавляем навигацию.
-                var navigation = new CitizenNavigation
-                {
-                    CurrentPoint = startPoint,
-                    TargetPosition = position,
-                    Random = Random.CreateFromIndex(
-                        (uint)(i + 1000)
-                    )
-                };
+                // Здоровье.
+                entityManager.SetComponentData(
+                    citizen,
+                    new CitizenHealth
+                    {
+                        Current = config.MaxHealth,
+                        Max = config.MaxHealth
+                    }
+                );
 
-                if (entityManager.HasComponent<CitizenNavigation>(citizen))
-                {
-                    entityManager.SetComponentData(
-                        citizen,
-                        navigation
-                    );
-                }
-                else
-                {
-                    entityManager.AddComponentData(
-                        citizen,
-                        navigation
-                    );
-                }
+                // Внешность.
+                entityManager.SetComponentData(
+                    citizen,
+                    new CitizenAppearance
+                    {
+                        VariantId = selectedVariantId
+                    }
+                );
+
+                // Начальная навигация.
+                entityManager.SetComponentData(
+                    citizen,
+                    new CitizenNavigation
+                    {
+                        CurrentPoint = startPoint,
+                        TargetPosition = spawnPosition,
+                        Random = Random.CreateFromIndex(
+                            (uint)(i + 1000)
+                        )
+                    }
+                );
+
+                // Занимаем найденное место.
+                occupiedPositions.Add(spawnPosition);
+
+                createdCount++;
             }
 
-            // Запоминаем, что спавн завершён.
             config.HasSpawned = true;
 
             entityManager.SetComponentData(
@@ -220,7 +329,8 @@ namespace Systems
             );
 
             UnityEngine.Debug.Log(
-                $"CitizenSpawnSystem: создано жителей: {config.Count}"
+                $"CitizenSpawnSystem: создано {createdCount} " +
+                $"из {config.Count} жителей."
             );
         }
     }
