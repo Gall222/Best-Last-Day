@@ -13,4 +13,9 @@ MonoBehaviour:
   m_Name: CitizenSpawnSettings
   m_EditorClassIdentifier: Assembly-CSharp::Settings.CitizenSpawnSettings
   count: 10
-  citizenPrefab: {fileID: 9166897067320635623, guid: e729bb07b0af3774bad555fc1913ea8a, type: 3}
+  speed: 1.5
+  runSpeed: 3
+  rotationSpeed: 5
+  maxHealth: 100
+  prefabs:
+  - {fileID: 11400000, guid: 83ec8cbff8e869243ad3823f6af8ee70, type: 2}
