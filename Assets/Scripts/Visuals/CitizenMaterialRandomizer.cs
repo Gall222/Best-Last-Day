@@ -20,17 +20,17 @@ namespace Visuals
             ApplyRandomMaterials();
         }
 
-        private static void LoadMaterials()
+        private void LoadMaterials()
         {
             if (_materialsLoaded)
                 return;
 
             _tshirtMaterials = Resources.LoadAll<Material>(
-                "Materials/Tshirt"
+                tshirtFolder
             );
 
             _pantsMaterials = Resources.LoadAll<Material>(
-                "Materials/Pants"
+                pantsFolder
             );
 
             _materialsLoaded = true;

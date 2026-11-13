@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 3096ff72475848a7b7643f5f004d3341, type: 3}
   m_Name: CitizenSpawnSettings
   m_EditorClassIdentifier: Assembly-CSharp::Settings.CitizenSpawnSettings
-  count: 10
+  count: 500
   speed: 1.5
   runSpeed: 3
   rotationSpeed: 5

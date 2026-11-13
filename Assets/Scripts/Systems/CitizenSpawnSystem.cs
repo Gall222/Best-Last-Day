@@ -25,6 +25,8 @@ namespace Systems
 
         // Сколько раз пробуем найти свободное место.
         private const int MaxPlacementAttempts = 50;
+        
+        private const float MaxLateralOffset = 0.4f;
 
         public void OnCreate(ref SystemState state)
         {
@@ -51,7 +53,10 @@ namespace Systems
                 ComponentType.ReadWrite<CitizenHealth>(),
                 ComponentType.ReadWrite<CitizenNavigation>(),
                 ComponentType.ReadWrite<CitizenAppearance>(),
-                ComponentType.ReadWrite<LocalTransform>()
+                ComponentType.ReadWrite<LocalTransform>(),
+                ComponentType.ReadWrite<AgentPersonality>(),
+                ComponentType.ReadWrite<AgentPerception>(),
+                ComponentType.ReadWrite<AgentDecision>()
             );
 
             _random = Random.CreateFromIndex(12345);
@@ -282,6 +287,26 @@ namespace Systems
                         RotationSpeed = config.RotationSpeed
                     }
                 );
+                
+                entityManager.SetComponentData(
+                    citizen,
+                    new AgentPersonality
+                    {
+                        Aggression = _random.NextFloat(0.1f, 0.8f),
+                        Courage = _random.NextFloat(0.1f, 0.9f),
+                        Fear = _random.NextFloat(0.2f, 0.9f),
+                        Curiosity = _random.NextFloat(0.1f, 0.9f),
+                        PanicResistance = _random.NextFloat(0.1f, 0.9f),
+                        Clumsiness = _random.NextFloat(0.05f, 0.5f)
+                    }
+                );
+                
+                entityManager.SetComponentData(citizen, new AgentPerception
+                {
+                    Threat = Entity.Null,
+                    ThreatDistance = float.MaxValue,
+                    HasThreat = 0
+                });
 
                 // Здоровье.
                 entityManager.SetComponentData(
@@ -309,11 +334,22 @@ namespace Systems
                     {
                         CurrentPoint = startPoint,
                         TargetPosition = spawnPosition,
-                        Random = Random.CreateFromIndex(
-                            (uint)(i + 1000)
-                        )
+
+                        LateralOffset = _random.NextFloat(
+                            -MaxLateralOffset,
+                            MaxLateralOffset
+                        ),
+
+                        Random = Random.CreateFromIndex((uint)(i + 1000))
                     }
                 );
+                
+                entityManager.SetComponentData(citizen, new AgentDecision
+                {
+                    Action = AgentAction.None,
+                    Target = Entity.Null,
+                    Cooldown = 0f
+                });
 
                 // Занимаем найденное место.
                 occupiedPositions.Add(spawnPosition);
