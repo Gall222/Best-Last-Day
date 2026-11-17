@@ -133,4 +133,11 @@ namespace Components
         public float AttackDamage;
         public float AttackRange;
     }
+    
+    public struct CitizenDeathProgress : IComponentData
+    {
+        public float ElapsedTime;
+        public float Duration;
+        public float Amount;
+    }
 }

@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿
+using System.Collections.Generic;
 using Components;
 using Settings;
 using Unity.Collections;
@@ -27,6 +28,7 @@ namespace Visuals
 
         private bool _initialized;
 
+        // Animation properties
         private static readonly int AnimStateHash =
             Animator.StringToHash("AnimState");
 
@@ -35,9 +37,35 @@ namespace Visuals
 
         private static readonly int WalkingStateHash =
             Animator.StringToHash("Base Layer.walking");
-        
+
         private static readonly int SlowRunStateHash =
             Animator.StringToHash("Base Layer.slow run");
+
+        // Skin shader properties
+        private static readonly int HealthySkinColorId =
+            Shader.PropertyToID("_HealthySkinColor");
+
+        private static readonly int DeadSkinColorId =
+            Shader.PropertyToID("_DeadSkinColor");
+
+        private static readonly int DeathAmountId =
+            Shader.PropertyToID("_DeathAmount");
+
+        // Skin material slots
+        private static readonly int[] SkinMaterialSlots =
+        {
+            1, 2, 6, 7
+        };
+
+        private sealed class SkinMaterialSlot
+        {
+            public int Index;
+
+            public MaterialPropertyBlock PropertyBlock;
+
+            public Color HealthySkinColor;
+            public Color DeadSkinColor;
+        }
 
         private sealed class VisualInstance
         {
@@ -45,7 +73,12 @@ namespace Visuals
             public Transform Transform;
             public Animator Animator;
 
+            public SkinnedMeshRenderer SkinRenderer;
+
+            public readonly List<SkinMaterialSlot> SkinSlots = new();
+
             public int LastAnimationState = -1;
+            public float LastDeathAmount = -1f;
         }
 
         private void Start()
@@ -137,6 +170,26 @@ namespace Visuals
 
             UpdateTransform(visual.Transform, transform);
             UpdateAnimation(visual, state.Value);
+            
+            UpdateTransform(visual.Transform, transform);
+            UpdateAnimation(visual, state.Value);
+
+// Получаем прогресс изменения цвета кожи.
+            float deathAmount = 0f;
+
+            if (_entityManager.HasComponent<CitizenDeathProgress>(entity))
+            {
+                deathAmount = _entityManager
+                    .GetComponentData<CitizenDeathProgress>(entity)
+                    .Amount;
+            }
+
+// Обновляем материал только при изменении значения.
+            if (!Mathf.Approximately(visual.LastDeathAmount, deathAmount))
+            {
+                SetSkinDeathAmount(entity, deathAmount);
+                visual.LastDeathAmount = deathAmount;
+            }
         }
 
         private VisualInstance CreateVisualInstance(
@@ -177,17 +230,166 @@ namespace Visuals
             }
             else
             {
-                // Индивидуальная скорость анимации.
+                // Individual animation speed
                 animator.speed = Random.Range(0.9f, 1.0f);
             }
 
-            return new VisualInstance
+            var visual = new VisualInstance
             {
                 GameObject = gameObject,
                 Transform = gameObject.transform,
-                Animator = animator
+                Animator = animator,
+
+                SkinRenderer =
+                    gameObject.GetComponentInChildren<SkinnedMeshRenderer>(true)
             };
+
+            InitializeSkinMaterials(visual);
+
+            return visual;
         }
+
+        // ==========================================
+        // SKIN
+        // ==========================================
+
+        private void InitializeSkinMaterials(VisualInstance visual)
+        {
+            if (visual.SkinRenderer == null)
+            {
+                Debug.LogError(
+                    "CitizenVisualManager: SkinnedMeshRenderer не найден!",
+                    visual.GameObject
+                );
+
+                return;
+            }
+
+            Material[] materials =
+                visual.SkinRenderer.sharedMaterials;
+
+            foreach (int index in SkinMaterialSlots)
+            {
+                if (index < 0 || index >= materials.Length)
+                {
+                    Debug.LogWarning(
+                        $"CitizenVisualManager: слот кожи {index} отсутствует!",
+                        visual.GameObject
+                    );
+
+                    continue;
+                }
+
+                Material material = materials[index];
+
+                if (material == null)
+                    continue;
+
+                if (!material.HasProperty(HealthySkinColorId) ||
+                    !material.HasProperty(DeadSkinColorId) ||
+                    !material.HasProperty(DeathAmountId))
+                {
+                    Debug.LogWarning(
+                        $"CitizenVisualManager: материал {material.name} " +
+                        $"в слоте {index} не содержит необходимых свойств SkinShader!",
+                        visual.GameObject
+                    );
+
+                    continue;
+                }
+
+                var slot = new SkinMaterialSlot
+                {
+                    Index = index,
+                    PropertyBlock = new MaterialPropertyBlock(),
+
+                    HealthySkinColor =
+                        material.GetColor(HealthySkinColorId),
+
+                    DeadSkinColor =
+                        material.GetColor(DeadSkinColorId)
+                };
+
+                // Получаем существующие свойства конкретного слота
+                visual.SkinRenderer.GetPropertyBlock(
+                    slot.PropertyBlock,
+                    index
+                );
+
+                // Сохраняем индивидуальные цвета
+                slot.PropertyBlock.SetColor(
+                    HealthySkinColorId,
+                    slot.HealthySkinColor
+                );
+
+                slot.PropertyBlock.SetColor(
+                    DeadSkinColorId,
+                    slot.DeadSkinColor
+                );
+
+                // Изначально кожа здоровая
+                slot.PropertyBlock.SetFloat(
+                    DeathAmountId,
+                    0f
+                );
+
+                visual.SkinRenderer.SetPropertyBlock(
+                    slot.PropertyBlock,
+                    index
+                );
+
+                visual.SkinSlots.Add(slot);
+            }
+
+            if (visual.SkinSlots.Count == 0)
+            {
+                Debug.LogWarning(
+                    "CitizenVisualManager: не удалось инициализировать слоты кожи!",
+                    visual.GameObject
+                );
+            }
+        }
+
+        /// <summary>
+        /// Изменяет степень изменения цвета кожи конкретного жителя.
+        /// 0 = здоровая кожа.
+        /// 1 = цвет мертвой кожи.
+        /// </summary>
+        public void SetSkinDeathAmount(Entity entity, float amount)
+        {
+            if (!_visuals.TryGetValue(entity, out VisualInstance visual))
+                return;
+
+            if (visual.SkinRenderer == null)
+                return;
+
+            amount = Mathf.Clamp01(amount);
+
+            foreach (var slot in visual.SkinSlots)
+            {
+                slot.PropertyBlock.SetFloat(
+                    DeathAmountId,
+                    amount
+                );
+
+                visual.SkinRenderer.SetPropertyBlock(
+                    slot.PropertyBlock,
+                    slot.Index
+                );
+            }
+        }
+
+        /// <summary>
+        /// Возвращает кожу конкретного жителя в исходное состояние.
+        /// </summary>
+        public void ResetSkinDeathAmount(Entity entity)
+        {
+            SetSkinDeathAmount(entity, 0f);
+        }
+
+        // ==========================================
+        // TRANSFORM
+        // ==========================================
 
         private void UpdateTransform(
             Transform visual,
@@ -208,6 +410,10 @@ namespace Visuals
 
             visual.localScale = Vector3.one * localTransform.Scale;
         }
+
+        // ==========================================
+        // ANIMATION
+        // ==========================================
 
         private void UpdateAnimation(
             VisualInstance visual,
@@ -270,6 +476,10 @@ namespace Visuals
             };
         }
 
+        // ==========================================
+        // CLEANUP
+        // ==========================================
+
         private void RemoveUnusedVisuals()
         {
             _entitiesToRemove.Clear();
@@ -300,6 +510,28 @@ namespace Visuals
             _visuals.Clear();
 
             _initialized = false;
+        }
+        
+        [ContextMenu("Test Skin Death")]
+        private void TestSkinDeath()
+        {
+            foreach (var pair in _visuals)
+            {
+                SetSkinDeathAmount(pair.Key, 1f);
+                Debug.Log("TestSkinDeath");
+                break;
+            }
+        }
+        
+        [ContextMenu("Reset Skin")]
+        private void TestSkinReset()
+        {
+            foreach (var pair in _visuals)
+            {
+                ResetSkinDeathAmount(pair.Key);
+                Debug.Log("TestSkinReset");
+                break;
+            }
         }
     }
 }
