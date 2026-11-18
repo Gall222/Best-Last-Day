@@ -1,3 +1,4 @@
+
 using Components;
 using Unity.Entities;
 using UnityEngine;
@@ -40,10 +41,12 @@ namespace Authoring
                     RotationSpeed = authoring.rotationSpeed,
                     RunSpeed = authoring.speed * 2f
                 });
-                
-                var random = Random.CreateFromIndex((uint)(entity.Index + 1));
 
-                AddComponent(entity, new AgentPersonality
+                var random = Random.CreateFromIndex(
+                    (uint)(entity.Index + 1)
+                );
+
+                var personality = new AgentPersonality
                 {
                     Aggression = random.NextFloat(0.1f, 0.8f),
                     Courage = random.NextFloat(0.1f, 0.9f),
@@ -51,8 +54,31 @@ namespace Authoring
                     Curiosity = random.NextFloat(0.1f, 0.9f),
                     PanicResistance = random.NextFloat(0.1f, 0.9f),
                     Clumsiness = random.NextFloat(0.05f, 0.5f)
+                };
+
+                AddComponent(entity, personality);
+
+                // Объект может сбивать других жителей.
+                AddComponent(entity, new KnockdownSource
+                {
+                    CollisionModifier = 1f,
+                    AttackModifier = 1f,
+                    Radius = 0.45f,
+                    Enabled = 1
                 });
-                
+
+                // Житель сам может быть сбит с ног.
+                // Чем выше Clumsiness, тем легче его сбить.
+                AddComponent(entity, new KnockdownTarget
+                {
+                    Susceptibility = 1f + personality.Clumsiness,
+                    Radius = 0.45f,
+                    State = BodyState.Standing,
+                    Direction = FallDirection.Back,
+                    Timer = 0f,
+                    CollisionCooldown = 0f
+                });
+
                 AddComponent(entity, new AgentPerception
                 {
                     Threat = Entity.Null,
@@ -65,7 +91,7 @@ namespace Authoring
                     Current = authoring.maxHealth,
                     Max = authoring.maxHealth
                 });
-                
+
                 AddComponent(entity, new AgentDecision
                 {
                     Action = AgentAction.None,

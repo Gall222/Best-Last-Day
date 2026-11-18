@@ -139,5 +139,7 @@ namespace Components
         public float ElapsedTime;
         public float Duration;
         public float Amount;
+
+        public float ReviveElapsedTime;
     }
 }

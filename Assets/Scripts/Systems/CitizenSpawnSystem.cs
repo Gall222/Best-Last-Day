@@ -12,6 +12,7 @@ namespace Systems
         private EntityQuery _configQuery;
         private EntityQuery _walkPointsQuery;
         private EntityQuery _citizensQuery;
+        private EntityQuery _knockdownConfigQuery;
 
         private EntityArchetype _citizenArchetype;
 
@@ -33,6 +34,10 @@ namespace Systems
             _configQuery = state.GetEntityQuery(
                 ComponentType.ReadOnly<CitizenSpawnConfig>(),
                 ComponentType.ReadOnly<CitizenVisualVariantElement>()
+            );
+            
+            _knockdownConfigQuery = state.GetEntityQuery(
+                ComponentType.ReadOnly<KnockdownConfig>()
             );
 
             _walkPointsQuery = state.GetEntityQuery(
@@ -56,7 +61,9 @@ namespace Systems
                 ComponentType.ReadWrite<LocalTransform>(),
                 ComponentType.ReadWrite<AgentPersonality>(),
                 ComponentType.ReadWrite<AgentPerception>(),
-                ComponentType.ReadWrite<AgentDecision>()
+                ComponentType.ReadWrite<AgentDecision>(),
+                ComponentType.ReadWrite<KnockdownSource>(),
+                ComponentType.ReadWrite<KnockdownTarget>()
             );
 
             _random = Random.CreateFromIndex(12345);
@@ -66,6 +73,16 @@ namespace Systems
         {
             if (_configQuery.CalculateEntityCount() != 1)
                 return;
+            
+            if (_knockdownConfigQuery.CalculateEntityCount() != 1)
+            {
+                UnityEngine.Debug.LogError(
+                    "CitizenSpawnSystem: KnockdownConfig не найден или их несколько!"
+                );
+                return;
+            }
+
+            var knockdownConfig = _knockdownConfigQuery.GetSingleton<KnockdownConfig>();
 
             EntityManager entityManager = state.EntityManager;
 
@@ -288,16 +305,44 @@ namespace Systems
                     }
                 );
                 
+                var personality = new AgentPersonality
+                {
+                    Aggression = _random.NextFloat(0.1f, 0.8f),
+                    Courage = _random.NextFloat(0.1f, 0.9f),
+                    Fear = _random.NextFloat(0.2f, 0.9f),
+                    Curiosity = _random.NextFloat(0.1f, 0.9f),
+                    PanicResistance = _random.NextFloat(0.1f, 0.9f),
+                    Clumsiness = _random.NextFloat(0.05f, 0.5f)
+                };
+                
+                entityManager.SetComponentData(citizen, personality);
+                
+                // Возможность сбивать других жителей.
                 entityManager.SetComponentData(
                     citizen,
-                    new AgentPersonality
+                    new KnockdownSource
                     {
-                        Aggression = _random.NextFloat(0.1f, 0.8f),
-                        Courage = _random.NextFloat(0.1f, 0.9f),
-                        Fear = _random.NextFloat(0.2f, 0.9f),
-                        Curiosity = _random.NextFloat(0.1f, 0.9f),
-                        PanicResistance = _random.NextFloat(0.1f, 0.9f),
-                        Clumsiness = _random.NextFloat(0.05f, 0.5f)
+                        CollisionModifier = 1f,
+                        AttackModifier = 1f,
+                        Radius = knockdownConfig.CitizenRadius,
+                        Enabled = 1
+                    }
+                );
+
+// Возможность самому упасть.
+                entityManager.SetComponentData(
+                    citizen,
+                    new KnockdownTarget
+                    {
+                        Susceptibility =
+                            knockdownConfig.CitizenSusceptibility *
+                            (1f + personality.Clumsiness),
+
+                        Radius = knockdownConfig.CitizenRadius,
+                        State = BodyState.Standing,
+                        Direction = FallDirection.Back,
+                        Timer = 0f,
+                        CollisionCooldown = 0f
                     }
                 );
                 

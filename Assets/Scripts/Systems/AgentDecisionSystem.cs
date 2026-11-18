@@ -20,7 +20,8 @@ public partial struct AgentDecisionSystem : ISystem
                  SystemAPI.Query<
                      RefRW<AgentDecision>,
                      RefRO<AgentPerception>,
-                     RefRO<AgentPersonality>>())
+                     RefRO<AgentPersonality>>()
+                     .WithNone<ZombieTag>())
         {
             ref var currentDecision = ref decision.ValueRW;
 

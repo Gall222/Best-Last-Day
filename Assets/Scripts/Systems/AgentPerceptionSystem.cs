@@ -37,9 +37,10 @@ namespace Systems
 
             foreach (var (perception, transform) in
                      SystemAPI.Query<
-                         RefRW<AgentPerception>,
-                         RefRO<LocalTransform>>()
-                         .WithAll<Citizen>())
+                             RefRW<AgentPerception>,
+                             RefRO<LocalTransform>>()
+                         .WithAll<Citizen>()
+                         .WithNone<ZombieTag>())
             {
                 float3 citizenPosition = transform.ValueRO.Position;
 
